@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Bloom: a kinetic light sculpture concept for FH Technikum Wien</title>
+<!--
+  BLOOM display page. Single file, no dependencies.
+
+  LOGO: put the official logo next to this file as  fhtw-logo.png  (transparent PNG, any size;
+  it is scaled to fit the center disc). Until that file exists, a simple drawn placeholder is shown.
+
+  TIMING: all durations are in seconds and live in the CONFIG block below.
+-->
+<style>
+:root{color-scheme:dark;--tx:#ece6d8;--amber:#f2b441}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:#1b1d21;overflow:hidden}
+body{font:15px/1.4 "Avenir Next","Segoe UI",system-ui,sans-serif;color:var(--tx)}
+#c{position:fixed;inset:0;width:100%;height:100%;display:block}
+#ui{position:fixed;left:0;right:0;bottom:max(36px,env(safe-area-inset-bottom));display:flex;flex-direction:column;align-items:center;gap:14px;pointer-events:none}
+#go{pointer-events:auto;cursor:pointer;font:600 15px/1 inherit;letter-spacing:.28em;text-transform:uppercase;padding:16px 38px 16px 44px;border-radius:999px;border:1px solid rgba(242,180,65,.55);background:rgba(20,18,14,.55);color:var(--amber);backdrop-filter:blur(6px);transition:opacity 1.2s ease,transform 1.2s ease,background .3s,box-shadow .3s}
+#go:hover{background:rgba(242,180,65,.14);box-shadow:0 0 28px rgba(242,180,65,.25)}
+#go:focus-visible{outline:2px solid var(--amber);outline-offset:4px}
+#go.hide{opacity:0;transform:translateY(8px);pointer-events:none}
+#cap{font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:rgba(236,230,216,.42);transition:opacity 1.2s ease}
+#cap.hide{opacity:0}
+</style></head><body>
+<canvas id="c" aria-label="Animation of five mechanical flowers opening to reveal a logo"></canvas>
+<div id="ui"><button id="go" type="button">Start</button><div id="cap">Bloom &middot; kinetic light sculpture concept</div></div>
+<script>
+// ---------------- CONFIG ----------------
+const CFG={
+  open:18,        // seconds for arms to swing out and petals to bloom
+  hold:12,        // seconds per animation scene
+  fade:4,         // crossfade between scenes
+  close:18,       // seconds to fold back in
+  rate:.35,       // global slow-down of all light/bloom motion (lower = slower)
+  bloomDepth:.35, // how far petals "breathe" while open (0 = none)
+  bright:.85
+};
+// Each scene pairs a petal-light pattern with a petal-bloom motion. Names refer to FX and BF below.
+const SCENES=[
+  {fx:"Breathe",bx:"Breathe"},
+  {fx:"Wave",bx:"Wave"},
+  {fx:"Ripple",bx:"Alternate"},
+  {fx:"Sweep",bx:"DipChase"},
+  {fx:"Breathe",bx:"Still"}
+];
+
+// ---------------- helpers ----------------
+const TAU=Math.PI*2,S=Math.sin,clamp=(x,a=0,b=1)=>Math.min(b,Math.max(a,x)),ease=x=>x*x*(3-2*x),wave=x=>.5+.5*S(x);
+const N=24; // LEDs around the center disc edge
+const hex2rgb=h=>[1,3,5].map(i=>parseInt(h.substr(i,2),16));
+const hash=(a,b)=>{const x=Math.sin(a*127.1+b*311.7)*43758.5453;return x-Math.floor(x)};
+// Light patterns: (t, flower 0-4, petal 0-4) -> 0..1
+const FX={
+  Breathe:(t,i,j)=>wave(t*1.4),
+  Wave:(t,i,j)=>wave(t*2-i*TAU/5),
+  Ripple:(t,i,j)=>wave(t*3-Math.min(j,5-j)*1.3-i*.5),
+  Sweep:(t,i,j)=>Math.pow(wave(t*2-(i*5+j)*TAU/25*2),2)
+};
+// Bloom motions: (t, flower) -> 0..1 (1 = fully open)
+const BF={
+  Still:()=>1,
+  Breathe:t=>wave(t*1.2),
+  Wave:(t,i)=>wave(t*1.4-i*TAU/5),
+  Alternate:(t,i)=>wave(t*1.5+(i%2)*Math.PI),
+  DipChase:(t,i)=>1-Math.pow(wave(t*2.2-i*TAU/5),5)
+};
+
+// ---------------- canvas ----------------
+const cv=document.getElementById("c"),ctx=cv.getContext("2d");let W=0,H=0,dpr=1;
+function size(){dpr=window.devicePixelRatio||1;W=innerWidth;H=innerHeight;cv.width=W*dpr;cv.height=H*dpr}
+addEventListener("resize",size);size();
+
+// ---------------- logo ----------------
+const logoImg=new Image();let logoOK=false;
+logoImg.onload=()=>{logoOK=true};logoImg.onerror=()=>{logoOK=false};
+logoImg.src="fhtw-logo.png";
+function rect(x,y,w,h,c){ctx.fillStyle=c;ctx.fillRect(x,y,w,h)}
+function drawLogo(){
+  const maxW=150,maxH=96;
+  if(logoOK){
+    const k=Math.min(maxW/logoImg.naturalWidth,maxH/logoImg.naturalHeight),w=logoImg.naturalWidth*k,h=logoImg.naturalHeight*k;
+    ctx.drawImage(logoImg,-w/2,-h/2,w,h);return;
+  }
+  // placeholder only, replace by providing fhtw-logo.png
+  const x0=-75,y0=-48;
+  rect(x0,y0,44,30,"#78b51d");rect(x0,y0+34,150,30,"#6d6e71");rect(x0,y0+68,78,28,"#0a64a4");
+  ctx.fillStyle="#fff";ctx.textBaseline="middle";ctx.textAlign="center";
+  ctx.font="700 19px 'Segoe UI',Arial,sans-serif";ctx.fillText("FH",x0+22,y0+16);
+  ctx.font="600 20px 'Segoe UI',Arial,sans-serif";ctx.fillText("TECHNIKUM",x0+75,y0+50);
+  ctx.fillText("WIEN",x0+39,y0+83);
+  ctx.textAlign="left";ctx.fillStyle="rgba(255,255,255,.85)";ctx.font="9px 'Segoe UI',Arial,sans-serif";
+  ctx.fillText("University of",x0+52,y0+10);ctx.fillText("Applied Sciences",x0+52,y0+22);
+}
+
+// ---------------- sequence ----------------
+// phases: idle -> opening -> show -> closing -> idle
+let phase="idle",ph=0,u=0,t=0,last=performance.now(),played=false;
+const SHOW=SCENES.length*CFG.hold;
+const btn=document.getElementById("go"),cap=document.getElementById("cap");
+btn.onclick=()=>{if(phase!=="idle")return;phase="opening";ph=0;btn.classList.add("hide");cap.classList.add("hide")};
+function sceneWeights(s){
+  const n=SCENES.length,Hd=CFG.hold,X=CFG.fade;s=Math.max(0,s);
+  if(s>=n*Hd)return[[n-1,1]];
+  const i=Math.floor(s/Hd),l=s-i*Hd;
+  if(i>0&&l<X/2){const w=ease(.5+l/X);return[[i-1,1-w],[i,w]]}
+  if(i<n-1&&l>Hd-X/2){const w=ease((l-(Hd-X/2))/X);return[[i,1-w],[i+1,w]]}
+  return[[i,1]];
+}
+function advance(dt){
+  if(phase==="opening"){ph+=dt;u=clamp(ph/CFG.open);if(ph>=CFG.open){phase="show";ph=0}}
+  else if(phase==="show"){ph+=dt;u=1;if(ph>=SHOW){phase="closing";ph=0}}
+  else if(phase==="closing"){ph+=dt;u=1-clamp(ph/CFG.close);if(ph>=CFG.close){phase="idle";ph=0;u=0;played=true;btn.textContent="Play again";btn.classList.remove("hide");cap.classList.remove("hide")}}
+}
+function petal(L,w){ctx.beginPath();ctx.moveTo(0,0);ctx.bezierCurveTo(L*.25,-w,L*.8,-w*.9,L,0);ctx.bezierCurveTo(L*.8,w*.9,L*.25,w,0,0)}
+const P=85,AL=140,SW=2.9,rgba=(c,a)=>`rgba(${c[0]|0},${c[1]|0},${c[2]|0},${a})`;
+
+function frame(now){
+  const dt=Math.min(.05,(now-last)/1000);last=now;
+  advance(dt);t+=dt*CFG.rate;
+  const br=CFG.bright;
+  const sw=phase==="show"?sceneWeights(ph):phase==="closing"?[[SCENES.length-1,1]]:[[0,1]];
+  const lightAt=(i,j)=>sw.reduce((a,[k,w])=>a+w*FX[SCENES[k].fx](t,i,j),0);
+  const bloomAt=i=>sw.reduce((a,[k,w])=>a+w*BF[SCENES[k].bx](t,i),0);
+  const e=ease(clamp(u/.7)),o=ease(clamp((u-.3)/.7)),lamp=ease(clamp((o-.25)/.5))*br;
+  const gB=ease(clamp((u-.9)/.1)),OI=[];
+  for(let i=0;i<5;i++)OI[i]=o*(1-CFG.bloomDepth*(1-clamp(bloomAt(i)))*gB);
+  const B=[],mean=[];let sum=0;
+  for(let i=0;i<5;i++){B[i]=[];let m=0;for(let j=0;j<5;j++){const v=lightAt(i,j)*lamp;B[i][j]=v;m+=v/5}mean[i]=m;sum+=m/5}
+  // center disc edge LEDs: warm, follows the flowers with a slow travelling glow
+  const base=hex2rgb("#ffa63d"),gate=ease(clamp(u/.4))*br,L=[];let av=[0,0,0];
+  for(let k=0;k<N;k++){
+    const c=base.map(v=>v*(.3+.5*sum+.2*wave(t*.9-k/N*TAU))*gate);
+    L[k]=c;av=av.map((v,n)=>v+c[n]/N)
+  }
+  const lit=gate*(.45+.55*clamp(sum*1.4));
+  // ---- draw
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  let g=ctx.createRadialGradient(W/2,H*.45,0,W/2,H/2,Math.max(W,H)*.75);g.addColorStop(0,"#2a2d33");g.addColorStop(1,"#15171a");
+  ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  const s=Math.min(W,H*.92)/640;ctx.translate(W/2,H*.47);ctx.scale(s,s);
+  const pos=[];for(let i=0;i<5;i++){const a=-Math.PI/2+i*TAU/5,ph2=a+(1-e)*SW;pos[i]=[P*Math.cos(a)+AL*Math.cos(ph2),P*Math.sin(a)+AL*Math.sin(ph2),a,P*Math.cos(a),P*Math.sin(a)]}
+  ctx.globalCompositeOperation="lighter";
+  g=ctx.createRadialGradient(0,0,0,0,0,300);g.addColorStop(0,rgba(av,.35));g.addColorStop(1,rgba(av,0));ctx.fillStyle=g;ctx.fillRect(-W,-H,W*2,H*2);
+  for(let i=0;i<5;i++){g=ctx.createRadialGradient(pos[i][0],pos[i][1],0,pos[i][0],pos[i][1],190);g.addColorStop(0,`rgba(255,160,60,${.3*mean[i]})`);g.addColorStop(1,"rgba(255,160,60,0)");ctx.fillStyle=g;ctx.fillRect(-W,-H,W*2,H*2)}
+  ctx.globalCompositeOperation="source-over";
+  // walnut ring + acrylic disc
+  g=ctx.createRadialGradient(0,-20,10,0,0,125);g.addColorStop(0,"#6b4a2d");g.addColorStop(1,"#3a2616");ctx.fillStyle=g;ctx.beginPath();ctx.arc(0,0,125,0,TAU);ctx.fill();
+  ctx.fillStyle="#17120e";ctx.beginPath();ctx.arc(0,0,108,0,TAU);ctx.fill();
+  ctx.save();ctx.beginPath();ctx.arc(0,0,108,0,TAU);ctx.clip();ctx.globalCompositeOperation="lighter";
+  for(let k=0;k<N;k++){const an=k/N*TAU-Math.PI/2,x=104*Math.cos(an),y=104*Math.sin(an);g=ctx.createRadialGradient(x,y,0,x,y,75);g.addColorStop(0,rgba(L[k],.3));g.addColorStop(1,rgba(L[k],0));ctx.fillStyle=g;ctx.fillRect(-110,-110,220,220)}
+  g=ctx.createRadialGradient(0,0,0,0,0,108);g.addColorStop(0,`rgba(255,215,150,${.22*lit})`);g.addColorStop(1,`rgba(255,190,110,${.07*lit})`);ctx.fillStyle=g;ctx.fillRect(-110,-110,220,220);
+  ctx.restore();
+  for(let k=0;k<N;k++){const an=k/N*TAU-Math.PI/2;ctx.fillStyle=rgba(L[k].map(v=>v*.9+25),1);ctx.shadowColor=rgba(L[k],1);ctx.shadowBlur=10;ctx.beginPath();ctx.arc(104*Math.cos(an),104*Math.sin(an),3.5,0,TAU);ctx.fill()}
+  ctx.shadowBlur=0;
+  // logo, lit from within
+  ctx.save();ctx.globalAlpha=clamp(.12+.88*lit);ctx.shadowColor="rgba(255,190,100,.8)";ctx.shadowBlur=14*lit;drawLogo();ctx.restore();
+  // arms
+  ctx.lineCap="round";
+  for(let i=0;i<5;i++){const p=pos[i];ctx.strokeStyle="#5a3c24";ctx.lineWidth=18;ctx.beginPath();ctx.moveTo(p[3],p[4]);ctx.lineTo(p[0],p[1]);ctx.stroke();ctx.strokeStyle="#7d5634";ctx.lineWidth=12;ctx.stroke();ctx.fillStyle="#c9a24a";ctx.beginPath();ctx.arc(p[3],p[4],9,0,TAU);ctx.fill()}
+  // flowers
+  for(let i=0;i<5;i++){
+    const oo=OI[i];ctx.save();ctx.translate(pos[i][0],pos[i][1]);ctx.rotate(pos[i][2]+(1-oo)*.9);
+    const Lp=40+28*oo,w=Lp*(.2+.24*oo);
+    for(let j=0;j<5;j++){
+      ctx.save();ctx.rotate(j*TAU/5+(1-oo)*.5);const b=B[i][j];
+      let gr=ctx.createLinearGradient(0,0,Lp,0);gr.addColorStop(0,"#f1ece2");gr.addColorStop(1,"#d6cfc1");petal(Lp,w);ctx.fillStyle=gr;ctx.fill();
+      ctx.save();petal(Lp,w);ctx.clip();
+      gr=ctx.createLinearGradient(0,0,Lp,0);gr.addColorStop(0,"#b8923f");gr.addColorStop(.45,"#c4788a");gr.addColorStop(1,"#a02a62");
+      ctx.globalAlpha=oo;ctx.fillStyle=gr;ctx.fillRect(0,-w,Lp,2*w);
+      ctx.fillStyle=`rgba(15,5,15,${.55*(1-b)})`;ctx.fillRect(0,-w,Lp,2*w);
+      gr=ctx.createLinearGradient(0,-w,0,w);gr.addColorStop(0,"rgba(255,190,70,0)");gr.addColorStop(.5,`rgba(255,200,80,${.55*b})`);gr.addColorStop(1,"rgba(255,190,70,0)");
+      ctx.globalCompositeOperation="lighter";ctx.fillStyle=gr;ctx.fillRect(0,-w,Lp,2*w);ctx.restore();
+      ctx.globalAlpha=1;
+      if(oo>.15){ctx.shadowColor="rgba(255,190,60,1)";ctx.shadowBlur=10*b;ctx.strokeStyle=b>.01?`rgba(255,${200+50*b|0},${90+100*b|0},${(.2+.8*b)*oo})`:`rgba(150,130,90,${.5*oo})`;ctx.lineWidth=2.4;ctx.beginPath();ctx.moveTo(Lp*.14,0);ctx.lineTo(Lp*.88,0);ctx.stroke();ctx.shadowBlur=0}
+      ctx.strokeStyle="rgba(90,60,70,.4)";ctx.lineWidth=1;petal(Lp,w);ctx.stroke();ctx.restore()}
+    ctx.fillStyle="#b9ad98";ctx.beginPath();ctx.arc(0,0,4+2*oo,0,TAU);ctx.fill();ctx.restore()}
+  requestAnimationFrame(frame)
+}
+requestAnimationFrame(frame);
+</script></body></html>
