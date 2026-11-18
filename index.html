@@ -113,8 +113,16 @@ function advance(dt){
   else if(phase==="show"){ph+=dt;u=1;if(ph>=SHOW){phase="closing";ph=0}}
   else if(phase==="closing"){ph+=dt;u=1-clamp(ph/CFG.close);if(ph>=CFG.close){phase="idle";ph=0;u=0;played=true;btn.textContent="Play again";btn.classList.remove("hide");cap.classList.remove("hide")}}
 }
-function petal(L,w){ctx.beginPath();ctx.moveTo(0,0);ctx.bezierCurveTo(L*.25,-w,L*.8,-w*.9,L,0);ctx.bezierCurveTo(L*.8,w*.9,L*.25,w,0,0)}
-const P=85,AL=140,SW=2.9,rgba=(c,a)=>`rgba(${c[0]|0},${c[1]|0},${c[2]|0},${a})`;
+// Petal outline (s = along the petal, v = across it): broad, rounded, slightly lopsided teardrop, as on the printed prototype
+function outline(L,w,sk){const a=1+sk,c=1-sk,seg=[
+ [0,0,L*.14,-w*.95*a,L*.50,-w*1.22*a,L*.80,-w*.86*a],
+ [L*.80,-w*.86*a,L*.97,-w*.55*a,L*1.07,-w*.14,L,w*.10],
+ [L,w*.10,L*.95,w*.50*c,L*.80,w*1.0*c,L*.52,w*1.12*c],
+ [L*.52,w*1.12*c,L*.26,w*1.12*c,L*.10,w*.80*c,0,0]],o=[];
+ for(const q of seg)for(let k=0;k<10;k++){const t=k/10,m=1-t,A=m*m*m,B2=3*m*m*t,C=3*m*t*t,D2=t*t*t;o.push([A*q[0]+B2*q[2]+C*q[4]+D2*q[6],A*q[1]+B2*q[3]+C*q[5]+D2*q[7]])}
+ return o}
+const TH0=.35; // fold angle of a closed bud, measured from upright (about 20 degrees)
+const P=85,AL=140,SW=2.9,PL=80,rgba=(c,a)=>`rgba(${c[0]|0},${c[1]|0},${c[2]|0},${a})`;
 
 function frame(now){
   const dt=Math.min(.05,(now-last)/1000);last=now;
@@ -139,8 +147,9 @@ function frame(now){
   ctx.setTransform(dpr,0,0,dpr,0,0);
   let g=ctx.createRadialGradient(W/2,H*.45,0,W/2,H/2,Math.max(W,H)*.75);g.addColorStop(0,"#2a2d33");g.addColorStop(1,"#15171a");
   ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
-  const s=Math.min(W,H*.92)/640;ctx.translate(W/2,H*.47);ctx.scale(s,s);
+  const s=Math.min(W,H*.92)/700;ctx.translate(W/2,H*.47);ctx.scale(s,s);
   const pos=[];for(let i=0;i<5;i++){const a=-Math.PI/2+i*TAU/5,ph2=a+(1-e)*SW;pos[i]=[P*Math.cos(a)+AL*Math.cos(ph2),P*Math.sin(a)+AL*Math.sin(ph2),a,P*Math.cos(a),P*Math.sin(a)]}
+  ctx.save();
   ctx.globalCompositeOperation="lighter";
   g=ctx.createRadialGradient(0,0,0,0,0,300);g.addColorStop(0,rgba(av,.35));g.addColorStop(1,rgba(av,0));ctx.fillStyle=g;ctx.fillRect(-W,-H,W*2,H*2);
   for(let i=0;i<5;i++){g=ctx.createRadialGradient(pos[i][0],pos[i][1],0,pos[i][0],pos[i][1],190);g.addColorStop(0,`rgba(255,160,60,${.3*mean[i]})`);g.addColorStop(1,"rgba(255,160,60,0)");ctx.fillStyle=g;ctx.fillRect(-W,-H,W*2,H*2)}
@@ -159,23 +168,67 @@ function frame(now){
   // arms
   ctx.lineCap="round";
   for(let i=0;i<5;i++){const p=pos[i];ctx.strokeStyle="#5a3c24";ctx.lineWidth=18;ctx.beginPath();ctx.moveTo(p[3],p[4]);ctx.lineTo(p[0],p[1]);ctx.stroke();ctx.strokeStyle="#7d5634";ctx.lineWidth=12;ctx.stroke();ctx.fillStyle="#c9a24a";ctx.beginPath();ctx.arc(p[3],p[4],9,0,TAU);ctx.fill()}
-  // flowers
+  ctx.restore();
+  // ---- flowers in 3D, seen straight on: each petal is a sheet hinged at the hub on a tangential axis (fold angle th: 0 upright, 90 degrees flat)
+  const proj=(x,y,z)=>[x,y,z];
+  // soft shadows on the wall: the higher a petal stands, the further its shadow falls from it, so you can read the fold without any camera movement
+  ctx.save();ctx.fillStyle="rgba(0,0,0,.26)";ctx.shadowColor="rgba(0,0,0,.4)";ctx.shadowBlur=16;
   for(let i=0;i<5;i++){
-    const oo=OI[i];ctx.save();ctx.translate(pos[i][0],pos[i][1]);ctx.rotate(pos[i][2]+(1-oo)*.9);
-    const Lp=40+28*oo,w=Lp*(.2+.24*oo);
+    const op=ease(OI[i]),th=TH0+(Math.PI/2-TH0)*op,sT=Math.sin(th),cT=Math.cos(th),cx=pos[i][0],cy=pos[i][1];
+    const WD=PL*.385*(.24+.76*Math.pow(op,1.4)),ol=outline(PL,WD,.14);
+    ctx.beginPath();
     for(let j=0;j<5;j++){
-      ctx.save();ctx.rotate(j*TAU/5+(1-oo)*.5);const b=B[i][j];
-      let gr=ctx.createLinearGradient(0,0,Lp,0);gr.addColorStop(0,"#f1ece2");gr.addColorStop(1,"#d6cfc1");petal(Lp,w);ctx.fillStyle=gr;ctx.fill();
-      ctx.save();petal(Lp,w);ctx.clip();
-      gr=ctx.createLinearGradient(0,0,Lp,0);gr.addColorStop(0,"#b8923f");gr.addColorStop(.45,"#c4788a");gr.addColorStop(1,"#a02a62");
-      ctx.globalAlpha=oo;ctx.fillStyle=gr;ctx.fillRect(0,-w,Lp,2*w);
-      ctx.fillStyle=`rgba(15,5,15,${.55*(1-b)})`;ctx.fillRect(0,-w,Lp,2*w);
-      gr=ctx.createLinearGradient(0,-w,0,w);gr.addColorStop(0,"rgba(255,190,70,0)");gr.addColorStop(.5,`rgba(255,200,80,${.55*b})`);gr.addColorStop(1,"rgba(255,190,70,0)");
-      ctx.globalCompositeOperation="lighter";ctx.fillStyle=gr;ctx.fillRect(0,-w,Lp,2*w);ctx.restore();
+      const al=pos[i][2]+j*TAU/5,rx=Math.cos(al),ry=Math.sin(al),tx=-ry,ty=rx;
+      ol.forEach(([s,v],k)=>{const cup=.2*v*v/(PL*.385),x=cx+rx*sT*s+tx*v-rx*cT*cup,y=cy+ry*sT*s+ty*v-ry*cT*cup,z=cT*s+sT*cup;
+        const X=x+z*.28+3,Y=y+z*.42+4;k?ctx.lineTo(X,Y):ctx.moveTo(X,Y)});
+      ctx.closePath()}
+    ctx.fill()}
+  ctx.restore();
+  const order=[0,1,2,3,4].sort((a,b)=>pos[a][1]-pos[b][1]);
+  for(const i of order){
+    const oo=OI[i],op=ease(oo),th=TH0+(Math.PI/2-TH0)*op,sT=Math.sin(th),cT=Math.cos(th),cx=pos[i][0],cy=pos[i][1];
+    // the bud is narrower and fans out as it opens, so closed petals stand side by side and only overlap once nearly flat
+    const WID=PL*.385*(.24+.76*Math.pow(op,1.4)),ol=outline(PL,WID,.14);
+    const hub=()=>{const hr=6+3.5*op;ctx.save();ctx.translate(cx,cy);ctx.fillStyle="#1d2433";ctx.strokeStyle="#44506b";ctx.lineWidth=1.2;ctx.beginPath();
+      for(let k=0;k<5;k++){const an=k*TAU/5-Math.PI/2;k?ctx.lineTo(hr*Math.cos(an),hr*Math.sin(an)):ctx.moveTo(hr*Math.cos(an),hr*Math.sin(an))}
+      ctx.closePath();ctx.fill();ctx.stroke();ctx.restore()};
+    if(op<.55)hub();
+    const items=[];
+    for(let j=0;j<5;j++){
+      const al=pos[i][2]+j*TAU/5,rx=Math.cos(al),ry=Math.sin(al),tx=-ry,ty=rx;
+      const P3=(s,v)=>{const cup=.2*v*v/(PL*.385);return proj(cx+rx*sT*s+tx*v-rx*cT*cup,cy+ry*sT*s+ty*v-ry*cT*cup,cT*s+sT*cup)};
+      items.push({j,rx,ry,P3,d:P3(PL*.6,0)[2]})}
+    items.sort((p,q)=>p.d-q.d);
+    for(const it of items){
+      const {j,ry,P3}=it,b=B[i][j];
+      const Bp=P3(0,0),Tp=P3(PL,0),Mp=P3(PL*.5,0),Wp=P3(PL*.5,WID),wx=Wp[0]-Mp[0],wy=Wp[1]-Mp[1];
+      const path=()=>{ctx.beginPath();ol.forEach(([s,v],k)=>{const p=P3(s,v);k?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1])});ctx.closePath()};
+      const lin=(x0,y0,x1,y1)=>ctx.createLinearGradient(x0,y0,x1,y1);
+      ctx.save();
+      // each petal casts a soft shadow onto its neighbour, so they read as overlapping layers
+      ctx.shadowColor="rgba(10,0,10,.45)";ctx.shadowBlur=9*op+2;
+      let gr=lin(Bp[0],Bp[1],Tp[0],Tp[1]);gr.addColorStop(0,"#f1ece2");gr.addColorStop(1,"#d6cfc1");path();ctx.fillStyle=gr;ctx.fill();
+      ctx.shadowBlur=0;
+      ctx.save();path();ctx.clip();
+      gr=lin(Bp[0],Bp[1],Tp[0],Tp[1]);gr.addColorStop(0,"#b8923f");gr.addColorStop(.45,"#c4788a");gr.addColorStop(1,"#a02a62");
+      ctx.globalAlpha=oo;ctx.fillStyle=gr;ctx.fillRect(-700,-700,1400,1400);
+      ctx.fillStyle=`rgba(15,5,15,${.55*(1-b)})`;ctx.fillRect(-700,-700,1400,1400);
       ctx.globalAlpha=1;
-      if(oo>.15){ctx.shadowColor="rgba(255,190,60,1)";ctx.shadowBlur=10*b;ctx.strokeStyle=b>.01?`rgba(255,${200+50*b|0},${90+100*b|0},${(.2+.8*b)*oo})`:`rgba(150,130,90,${.5*oo})`;ctx.lineWidth=2.4;ctx.beginPath();ctx.moveTo(Lp*.14,0);ctx.lineTo(Lp*.88,0);ctx.stroke();ctx.shadowBlur=0}
-      ctx.strokeStyle="rgba(90,60,70,.4)";ctx.lineWidth=1;petal(Lp,w);ctx.stroke();ctx.restore()}
-    ctx.fillStyle="#b9ad98";ctx.beginPath();ctx.arc(0,0,4+2*oo,0,TAU);ctx.fill();ctx.restore()}
+      // slight cupping: edges of each petal fall off into shade
+      gr=lin(Mp[0]-wx*1.25,Mp[1]-wy*1.25,Mp[0]+wx*1.25,Mp[1]+wy*1.25);gr.addColorStop(0,"rgba(40,8,30,.34)");gr.addColorStop(.3,"rgba(40,8,30,0)");gr.addColorStop(.7,"rgba(40,8,30,0)");gr.addColorStop(1,"rgba(40,8,30,.34)");ctx.fillStyle=gr;ctx.fillRect(-700,-700,1400,1400);
+      // lighting from the front: a petal standing up faces away from the light (darker, and differently for each side), a flat petal faces it
+      const sh=.6*(1-clamp(.35*ry*cT+.94*sT));
+      gr=lin(Bp[0],Bp[1],Tp[0],Tp[1]);gr.addColorStop(0,`rgba(20,5,20,${sh})`);gr.addColorStop(1,`rgba(20,5,20,${sh*.4})`);ctx.fillStyle=gr;ctx.fillRect(-700,-700,1400,1400);
+      // sheen that slides toward the tip as the petal flattens
+      const sc=.3+.5*op,sa=.30*Math.sin(op*Math.PI);gr=lin(Bp[0],Bp[1],Tp[0],Tp[1]);
+      gr.addColorStop(clamp(sc-.2),"rgba(255,240,235,0)");gr.addColorStop(clamp(sc),`rgba(255,240,235,${sa})`);gr.addColorStop(clamp(sc+.2),"rgba(255,240,235,0)");ctx.fillStyle=gr;ctx.fillRect(-700,-700,1400,1400);
+      ctx.globalAlpha=oo;
+      gr=lin(Mp[0]-wx,Mp[1]-wy,Mp[0]+wx,Mp[1]+wy);gr.addColorStop(0,"rgba(255,190,70,0)");gr.addColorStop(.5,`rgba(255,200,80,${.55*b})`);gr.addColorStop(1,"rgba(255,190,70,0)");
+      ctx.globalCompositeOperation="lighter";ctx.fillStyle=gr;ctx.fillRect(-700,-700,1400,1400);ctx.restore();
+      ctx.globalAlpha=1;
+      if(oo>.15){const A=P3(PL*.14,0),Z=P3(PL*.88,0);ctx.shadowColor="rgba(255,190,60,1)";ctx.shadowBlur=10*b;ctx.strokeStyle=b>.01?`rgba(255,${200+50*b|0},${90+100*b|0},${(.2+.8*b)*oo})`:`rgba(150,130,90,${.5*oo})`;ctx.lineWidth=2.4;ctx.lineCap="round";ctx.beginPath();ctx.moveTo(A[0],A[1]);ctx.lineTo(Z[0],Z[1]);ctx.stroke();ctx.shadowBlur=0}
+      ctx.strokeStyle=`rgba(235,215,205,${.5+.4*(1-op)})`;ctx.lineWidth=1.1;path();ctx.stroke();ctx.restore()}
+    if(op>=.55)hub()}
   requestAnimationFrame(frame)
 }
 requestAnimationFrame(frame);
